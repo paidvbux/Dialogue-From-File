@@ -7,41 +7,50 @@ using UnityEngine.UI;
 
 public class LoadDialogueFromFileScript : MonoBehaviour
 {
+    #region Classes
     [Serializable]
     public class TextRow
     {
-        public string name => value;
-
         public int indents;
         public string value;
-        public bool isPlayerDialogue;
-        
+        public bool isPlayerDialogue, waitWithClick;
+
         public List<TextRow> followUpDialogue;
 
 
-        public TextRow(int _indents, string _value, bool _isPlayerDialogue)
+        public TextRow(int _indents, string _value, bool _isPlayerDialogue, bool _waitWithClick)
         {
             indents = _indents;
             value = _value;
             isPlayerDialogue = _isPlayerDialogue;
             followUpDialogue = new List<TextRow>();
+            waitWithClick = _waitWithClick;
         }
     }
+    #endregion
 
+    #region General Variables/Settings
+    [Header("General Settings")]
+    public string speakerName;
+    public TextMeshProUGUI nameText, dialogueText;
+    #endregion
+
+    #region Dialogue Settings
+    [Header("Dialogue Settings")]
     public TextAsset file;
-
     public List<TextRow> rows;
-    public TextMeshProUGUI testText;
 
-    //public Button choiceButton;
+    public float waitTime = 0.5f, readSpeed = 0.05f;
+    #endregion
 
+    #region Hidden Variables
     string current;
-
+    
     bool inputReceived;
     bool finishedLerpingText;
-    //string receivedValue;
+    #endregion
 
-    //////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     #region Unity Runtime Functions
     void Awake()
@@ -49,8 +58,6 @@ public class LoadDialogueFromFileScript : MonoBehaviour
         current = "";
         inputReceived = false;
         finishedLerpingText = false;
-
-        file = Resources.Load<TextAsset>("Test");
 
         ReadFile();
         StartCoroutine(RunFile());
@@ -77,34 +84,37 @@ public class LoadDialogueFromFileScript : MonoBehaviour
                 index++;
             }
 
-            bool isValid = rows.Count - 1 != -1;
-            bool isFollowUpDialogue = indents >= 1;
-
-            //  Change the character inside to change the player prefix
             bool isPlayerDialogue = value.StartsWith('~');
+            bool waitWithClick = (isPlayerDialogue ? value.Substring(1) : value).StartsWith('|');
+            string finalValue = value.Substring((waitWithClick ? 1 : 0) + (isPlayerDialogue ? 1 : 0));
 
-            TextRow textRow = new TextRow(indents, isPlayerDialogue ? value.Substring(1) : value, isPlayerDialogue);
+            TextRow textRow = new TextRow(indents, finalValue, isPlayerDialogue, waitWithClick);
 
-            if (isValid && isFollowUpDialogue)
-                rows[rows.Count - 1].followUpDialogue.Add(textRow);
-            else
-                rows.Add(textRow);
+            rows.Add(textRow);
         }
     }
 
     IEnumerator RunFile()
     {
-        for (int i = 0; i < rows.Count; i++)
+        foreach (TextRow row in rows)
         {
-            bool hasFollowup = rows[i].followUpDialogue.Count != 0;
-            StartCoroutine(LerpText(current, rows[i].value, 0.1f, ChangeStringValue));
-            /*if (hasFollowup)
-                CreateResponses();*/
-
-            yield return new WaitWhile(() => {
-                bool waiting = (hasFollowup ? (inputReceived && finishedLerpingText && Input.GetKeyDown(KeyCode.Mouse0)) : finishedLerpingText && Input.GetKeyDown(KeyCode.Mouse0));
-                return !waiting;
-            });
+            bool hasFollowup = row.followUpDialogue.Count != 0;
+            nameText.text = row.isPlayerDialogue ? "You" : speakerName;
+            StartCoroutine(LerpText(current, row.value, readSpeed));
+            
+            if (row.waitWithClick)
+            {
+                yield return new WaitWhile(() => {
+                    bool waiting = (hasFollowup ? (inputReceived && finishedLerpingText && Input.GetKeyDown
+                        (KeyCode.Mouse0)) : finishedLerpingText && Input.GetKeyDown(KeyCode.Mouse0));
+                    return !waiting;
+                });
+            }
+            else
+            {
+                yield return new WaitWhile(() => !(hasFollowup ? (inputReceived && finishedLerpingText) : finishedLerpingText));
+                yield return new WaitForSeconds(waitTime);
+            }
 
             current = "";
             finishedLerpingText = false;
@@ -112,23 +122,7 @@ public class LoadDialogueFromFileScript : MonoBehaviour
         }
     }
 
-    /*
-    void CreateResponses()
-    {
-        foreach (TextRow row in rows)
-        {
-            Button button = Instantiate(choiceButton, Vector3.zero, Quaternion.identity).GetComponent<Button>();
-            button.onClick.AddListener(() => ReadResponse(row.value));
-    }
-
-    public void ReadResponse(string input)
-    {
-        receivedValue = input;
-        inputReceived = true;
-    }
-    */
-
-    public IEnumerator LerpText(string a, string b, float t, Action<string> stringCallback)
+    public IEnumerator LerpText(string a, string b, float t)
     {
         while (a != b)
         {
@@ -145,17 +139,12 @@ public class LoadDialogueFromFileScript : MonoBehaviour
 
             a = calculatedString;
 
-            stringCallback(calculatedString);
+            current = calculatedString;
+            dialogueText.text = calculatedString;
             yield return new WaitForSeconds(t);
         }
         finishedLerpingText = true;
         inputReceived = true;
-    }
-
-    void ChangeStringValue(string value)
-    {
-        current = value;
-        testText.text = current;
     }
     #endregion
 }
